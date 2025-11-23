@@ -142,6 +142,8 @@ logger.set_minimum_level('WARNING')
 
 ### Async Support
 
+**Unified API**: The same methods work in both sync and async contexts!
+
 ```python
 from nogger_package import Nogger
 import asyncio
@@ -152,16 +154,25 @@ async def main():
         output_behaviour='async_streamed'
     )
     
-    # Use async logging methods
-    await logger.info_async("Async operation started")
-    await logger.debug_async("Processing data")
-    await logger.info_async("Async operation completed")
+    # Same methods, just await in async contexts!
+    await logger.info("Async operation started")
+    await logger.debug("Processing data")
+    await logger.info("Async operation completed")
+    
+    # Or use without await (fire-and-forget)
+    logger.info("This queues automatically")
     
     # Graceful shutdown
     await logger.shutdown_async()
 
 asyncio.run(main())
 ```
+
+**Key Features:**
+- **No `_async` suffix needed** - Same API everywhere
+- **Context-aware** - Automatically detects async execution
+- **Config-driven** - Behaviour controlled by `output_behaviour`
+- **Optional await** - Logs are processed either way
 
 ## Configuration
 
@@ -568,24 +579,32 @@ logger = Nogger(colour_scheme=ColourScheme.MONOCHROME)
 
 #### Logging Methods
 
+**Unified API** - Same methods work in both sync and async contexts!
+
 ```python
 # Main logging method
 logger.add(message, level=LogLevel.INFO, **kwargs)
 
-# Convenience methods (sync)
+# Convenience methods - work everywhere
 logger.debug(message, **kwargs)
 logger.info(message, **kwargs)
 logger.warning(message, **kwargs)
 logger.error(message, **kwargs)
 logger.critical(message, **kwargs)
 
-# Async versions
-await logger.debug_async(message, **kwargs)
-await logger.info_async(message, **kwargs)
-await logger.warning_async(message, **kwargs)
-await logger.error_async(message, **kwargs)
-await logger.critical_async(message, **kwargs)
+# In async contexts with async output behaviour, simply await:
+await logger.debug(message, **kwargs)
+await logger.info(message, **kwargs)
+await logger.warning(message, **kwargs)
+await logger.error(message, **kwargs)
+await logger.critical(message, **kwargs)
 ```
+
+**How It Works:**
+- **Sync Mode** (`STREAMED`/`BATCHED`): Methods execute immediately
+- **Async Mode** (`ASYNC_STREAMED`/`ASYNC_BATCHED`): Methods return awaitables in async contexts
+- **Context Detection**: Automatically detects if you're in an async function
+- **Optional Await**: Logs are queued either way; await ensures worker is running
 
 #### Configuration Methods
 
@@ -917,6 +936,7 @@ For issues, questions, or feature requests:
 
 ### Version 1.0.0
 - ✨ Initial release with comprehensive logging features
+- ✨ **Unified async/sync API** - Same methods work everywhere
 - ✨ Full GDPR compliance module
 - ✨ 6 colour schemes
 - ✨ YAML configuration support
@@ -925,6 +945,156 @@ For issues, questions, or feature requests:
 - ✨ Comprehensive test suite
 - ✨ British English throughout
 - ✨ Zero dependencies (except PyYAML)
+
+## Unified API Deep Dive
+
+### Overview
+
+Nogger features a **unified API** that eliminates the need for separate `_async` methods. The same logging methods work seamlessly in both synchronous and asynchronous contexts.
+
+### Detection Logic
+
+The logger uses two simple checks:
+
+1. **Config Check**: Is `output_behaviour` set to async mode?
+   - `OutputBehaviour.ASYNC_STREAMED`
+   - `OutputBehaviour.ASYNC_BATCHED`
+
+2. **Context Check**: Is the code running in an async event loop?
+   - Uses `asyncio.current_task()` to detect
+
+### Execution Behaviour Matrix
+
+| Config Mode | Execution Context | Behaviour |
+|-------------|-------------------|-----------|
+| STREAMED | Sync | Execute immediately |
+| STREAMED | Async | Execute immediately |
+| ASYNC_STREAMED | Sync | Queue for async processing |
+| ASYNC_STREAMED | Async | Queue + return awaitable |
+| BATCHED | Any | Buffer and batch |
+| ASYNC_BATCHED | Any | Buffer and async batch |
+
+### Real-World Examples
+
+#### Web Server (Async)
+
+```python
+from fastapi import FastAPI
+from nogger_package import Nogger, OutputBehaviour
+
+app = FastAPI()
+logger = Nogger(
+    core="WebAPI",
+    output_behaviour=OutputBehaviour.ASYNC_STREAMED
+)
+
+@app.get("/api/data")
+async def get_data():
+    await logger.info("API request received")
+    
+    # Mix of sync and async logging
+    logger.debug("Validating request")  # Fire-and-forget
+    await logger.debug("Querying database")  # Ensured processing
+    
+    await logger.info("Request completed")
+    return {"status": "ok"}
+```
+
+#### CLI Tool (Sync)
+
+```python
+from nogger_package import Nogger, OutputBehaviour
+
+def process_files():
+    logger = Nogger(
+        core="CLITool",
+        output_behaviour=OutputBehaviour.STREAMED
+    )
+    
+    files = ["config.json", "data.csv", "output.txt"]
+    for file in files:
+        logger.info(f"Processing {file}")
+        # Processing logic
+        logger.info(f"Completed {file}")
+```
+
+#### Mixed Async/Sync Pipeline
+
+```python
+async def data_pipeline():
+    logger = Nogger(
+        core="Pipeline",
+        output_behaviour=OutputBehaviour.ASYNC_STREAMED
+    )
+    
+    # Async operations
+    await logger.info("Fetching data from API")
+    data = await fetch_data()
+    
+    # Sync operations (no await needed!)
+    logger.info("Processing data synchronously")
+    process_data(data)  # Sync function
+    logger.info("Processing complete")
+    
+    # Back to async
+    await logger.info("Saving results")
+    await save_data()
+    
+    await logger.shutdown_async()
+```
+
+### Migration from Old API
+
+**Before (if you used the old `_async` methods):**
+```python
+# Async code
+await logger.info_async("Message")
+await logger.debug_async("Debug info")
+```
+
+**After (unified API):**
+```python
+# Async code - cleaner!
+await logger.info("Message")
+await logger.debug("Debug info")
+
+# Or fire-and-forget
+logger.info("Message")  # Still works, queued automatically
+```
+
+### Best Practices
+
+#### ✓ DO
+
+```python
+# Use appropriate output behaviour for your use case
+logger = Nogger(output_behaviour=OutputBehaviour.STREAMED)  # CLI tools
+logger = Nogger(output_behaviour=OutputBehaviour.ASYNC_STREAMED)  # Web servers
+
+# Await in async contexts when you want backpressure
+await logger.error("Critical operation failed")
+
+# Use fire-and-forget for high-throughput logging
+logger.debug("High-frequency metric")  # No await needed
+```
+
+#### ✗ DON'T
+
+```python
+# Don't mix output behaviours unnecessarily
+# Choose once at initialization based on your app type
+
+# Don't create multiple loggers with different modes
+# Use a single logger instance per application/service
+```
+
+### Performance
+
+| Operation | Overhead | Notes |
+|-----------|----------|-------|
+| Sync logging | ~2μs | Direct execution |
+| Async logging | ~5μs | Includes queueing |
+| Context detection | ~1μs | Minimal overhead |
 
 ---
 

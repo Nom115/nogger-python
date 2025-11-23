@@ -1,6 +1,15 @@
 """
 Configuration management for Nogger logging system.
 Handles loading configuration from YAML files and runtime configuration.
+
+The OutputBehaviour setting controls the unified async/sync API behaviour:
+- STREAMED: Synchronous immediate output
+- BATCHED: Synchronous batched output
+- ASYNC_STREAMED: Asynchronous immediate output (unified API detects async context)
+- ASYNC_BATCHED: Asynchronous batched output (unified API detects async context)
+
+With unified API, the same methods (info, debug, etc.) work in both sync and async
+contexts - no need for separate _async methods!
 """
 
 import yaml
@@ -32,7 +41,18 @@ class LoggingMode(Enum):
 
 
 class OutputBehaviour(Enum):
-    """How logs are written to output"""
+    """
+    How logs are written to output.
+    
+    Controls the unified async/sync API behaviour:
+    - STREAMED: Immediate synchronous output
+    - BATCHED: Buffered synchronous output (batch_size/timeout controlled)
+    - ASYNC_STREAMED: Immediate async output (methods return awaitables in async contexts)
+    - ASYNC_BATCHED: Buffered async output (methods return awaitables in async contexts)
+    
+    With ASYNC modes, the same logging methods (info, debug, etc.) automatically
+    detect async contexts and return awaitables that can be awaited or ignored.
+    """
     STREAMED = "streamed"
     BATCHED = "batched"
     ASYNC_STREAMED = "async_streamed"

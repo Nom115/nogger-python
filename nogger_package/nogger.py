@@ -167,22 +167,7 @@ class Nogger:
         elif self._config.output_behaviour == OutputBehaviour.ASYNC_STREAMED:
             self._schedule_async_processing(log_entry, **kwargs)
         elif self._config.output_behaviour == OutputBehaviour.ASYNC_BATCHED:
-            self._add_to_async_batch(log_entry, **kwargs)
-    
-    async def add_async(self, message: str, level: Union[LogLevel, str] = LogLevel.INFO, **kwargs) -> None:
-        """
-        Async version of add() method for use in async contexts.
-        
-        This method provides the same functionality as add() but is designed
-        to work seamlessly in async/await contexts without blocking.
-        """
-        # Use the synchronous add method as it's already async-friendly
-        # The async processing happens in the background
-        self.add(message, level, **kwargs)
-        
-        # If we're in async mode, ensure the queue is processed
-        if self._config.output_behaviour in [OutputBehaviour.ASYNC_STREAMED, OutputBehaviour.ASYNC_BATCHED]:
-            await self._ensure_async_worker_running()
+            self._add_to_batch(log_entry, **kwargs)
     
     def _should_log_level(self, level: LogLevel) -> bool:
         """Check if the log level meets the minimum threshold"""
@@ -410,46 +395,96 @@ class Nogger:
     # CONVENIENCE METHODS
     # ============================================================================
     
-    def debug(self, message: str, **kwargs) -> None:
-        """Log a debug message with DEBUG level"""
-        self.add(message, LogLevel.DEBUG, **kwargs)
+    def _is_async_mode(self) -> bool:
+        """Check if async output behaviour is configured"""
+        return self._config.output_behaviour in [
+            OutputBehaviour.ASYNC_STREAMED, 
+            OutputBehaviour.ASYNC_BATCHED
+        ]
     
-    def info(self, message: str, **kwargs) -> None:
-        """Log an informational message with INFO level"""
-        self.add(message, LogLevel.INFO, **kwargs)
+    def _in_async_context(self) -> bool:
+        """Check if currently running in an async event loop"""
+        try:
+            asyncio.current_task()
+            return True
+        except RuntimeError:
+            return False
     
-    def warning(self, message: str, **kwargs) -> None:
-        """Log a warning message with WARNING level"""
-        self.add(message, LogLevel.WARNING, **kwargs)
+    def debug(self, message: str, **kwargs):
+        """
+        Log a debug message with DEBUG level.
+        
+        Works seamlessly in both sync and async contexts. The log is always
+        processed immediately; awaiting is optional and only ensures the async
+        worker is running when in async output mode.
+        
+        Usage:
+            # Synchronous
+            logger.debug("Debug message")
+            
+            # Asynchronous - await is optional
+            await logger.debug("Debug message")  # Ensures worker running
+            logger.debug("Also works")           # Fire-and-forget
+        """
+        return self._log(message, LogLevel.DEBUG, **kwargs)
     
-    def error(self, message: str, **kwargs) -> None:
-        """Log an error message with ERROR level"""
-        self.add(message, LogLevel.ERROR, **kwargs)
+    def info(self, message: str, **kwargs):
+        """
+        Log an informational message with INFO level.
+        
+        Works in both sync and async contexts.
+        """
+        return self._log(message, LogLevel.INFO, **kwargs)
     
-    def critical(self, message: str, **kwargs) -> None:
-        """Log a critical message with CRITICAL level"""
-        self.add(message, LogLevel.CRITICAL, **kwargs)
+    def warning(self, message: str, **kwargs):
+        """
+        Log a warning message with WARNING level.
+        
+        Works in both sync and async contexts.
+        """
+        return self._log(message, LogLevel.WARNING, **kwargs)
     
-    # Async convenience methods
-    async def debug_async(self, message: str, **kwargs) -> None:
-        """Async version of debug()"""
-        await self.add_async(message, LogLevel.DEBUG, **kwargs)
+    def error(self, message: str, **kwargs):
+        """
+        Log an error message with ERROR level.
+        
+        Works in both sync and async contexts.
+        """
+        return self._log(message, LogLevel.ERROR, **kwargs)
     
-    async def info_async(self, message: str, **kwargs) -> None:
-        """Async version of info()"""
-        await self.add_async(message, LogLevel.INFO, **kwargs)
+    def critical(self, message: str, **kwargs):
+        """
+        Log a critical message with CRITICAL level.
+        
+        Works in both sync and async contexts.
+        """
+        return self._log(message, LogLevel.CRITICAL, **kwargs)
     
-    async def warning_async(self, message: str, **kwargs) -> None:
-        """Async version of warning()"""
-        await self.add_async(message, LogLevel.WARNING, **kwargs)
+    def _log(self, message: str, level: LogLevel, **kwargs):
+        """
+        Unified logging method that adapts to context and configuration.
+        
+        Always executes synchronously. In async mode, schedules async worker
+        but doesn't force the caller to await.
+        """
+        # Always execute synchronously - this is key for flexibility
+        self.add(message, level, **kwargs)
+        
+        # If we're in async mode AND async context, return awaitable for worker management
+        # But the log is already queued, so awaiting is optional
+        if self._is_async_mode() and self._in_async_context():
+            return self._ensure_async_worker_running()
+        
+        return None
     
-    async def error_async(self, message: str, **kwargs) -> None:
-        """Async version of error()"""
-        await self.add_async(message, LogLevel.ERROR, **kwargs)
-    
-    async def critical_async(self, message: str, **kwargs) -> None:
-        """Async version of critical()"""
-        await self.add_async(message, LogLevel.CRITICAL, **kwargs)
+    async def _log_async(self, message: str, level: LogLevel, **kwargs):
+        """
+        Internal async logging wrapper.
+        
+        Ensures proper async processing and worker management.
+        """
+        self.add(message, level, **kwargs)
+        await self._ensure_async_worker_running()
     
     # ============================================================================
     # CONFIGURATION AND MANAGEMENT METHODS
