@@ -1,0 +1,16 @@
+# Include package metadata and documentation
+include README.md
+include LICENSE
+include requirements.txt
+
+# Include example files
+include example_config.yaml
+
+# Include package data
+recursive-include nogger_package *.py
+
+# Exclude test files and cache
+exclude test.py
+global-exclude __pycache__
+global-exclude *.py[co]
+global-exclude .DS_Store
