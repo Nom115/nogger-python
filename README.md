@@ -73,7 +73,7 @@ Or install from source:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/nogger-python.git
+git clone https://github.com/Nom115/nogger-python.git
 cd nogger-python
 
 # Install in development mode
