@@ -269,14 +269,26 @@ class Nogger:
             print(f"Error processing batch: {e}", file=None)
     
     def _schedule_async_processing(self, log_entry: LogEntry, **kwargs) -> None:
-        """Schedule log entry for async processing"""
-        if self._async_queue is None:
-            self._initialise_async_processing()
+        """
+        Schedule log entry for async processing.
         
+        If no event loop is running (sync context), falls back to immediate processing.
+        """
+        # Check if we're in an async context with a running event loop
         try:
-            self._async_queue.put_nowait((log_entry, kwargs))
-        except asyncio.QueueFull:
-            # Fallback to immediate processing if queue is full
+            loop = asyncio.get_running_loop()
+            # We have a loop, use async processing
+            if self._async_queue is None:
+                self._initialise_async_processing()
+            
+            try:
+                self._async_queue.put_nowait((log_entry, kwargs))
+            except asyncio.QueueFull:
+                # Fallback to immediate processing if queue is full
+                self._process_log_immediately(log_entry, **kwargs)
+        except RuntimeError:
+            # No running loop = sync context
+            # Fall back to immediate synchronous processing
             self._process_log_immediately(log_entry, **kwargs)
     
     def _add_to_async_batch(self, log_entry: LogEntry, **kwargs) -> None:
@@ -464,16 +476,25 @@ class Nogger:
         """
         Unified logging method that adapts to context and configuration.
         
-        Always executes synchronously. In async mode, schedules async worker
-        but doesn't force the caller to await.
+        Always executes synchronously. In async mode with async context,
+        returns an awaitable for worker management (optional to await).
         """
         # Always execute synchronously - this is key for flexibility
         self.add(message, level, **kwargs)
         
-        # If we're in async mode AND async context, return awaitable for worker management
-        # But the log is already queued, so awaiting is optional
-        if self._is_async_mode() and self._in_async_context():
-            return self._ensure_async_worker_running()
+        # Only return awaitable if we're BOTH in async mode AND async context
+        # This prevents warnings in sync code even with async mode enabled
+        if self._is_async_mode():
+            try:
+                # Try to get the running loop - this only works in async context
+                asyncio.get_running_loop()
+                # If we get here, we're in an async context
+                return self._ensure_async_worker_running()
+            except RuntimeError:
+                # No running loop = sync context, even with async mode
+                # Ensure worker is started if needed (sync method)
+                if self._async_queue is None:
+                    self._initialise_async_processing()
         
         return None
     

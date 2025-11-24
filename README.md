@@ -105,6 +105,28 @@ logger.info("User authentication", extra_data={
 })
 ```
 
+### Using get_logger() Factory
+
+```python
+from nogger_package import get_logger
+
+# First call creates and configures the logger
+logger = get_logger(
+    "MyApp",
+    colours=True,
+    output_behaviour='async_streamed',
+    gdpr={'enabled': True}
+)
+
+# Subsequent calls return the same instance (singleton pattern)
+logger = get_logger()
+
+# Use module name as context
+logger = get_logger(__name__)
+
+logger.info("Logging from module")
+```
+
 ### With GDPR Protection
 
 ```python
@@ -173,6 +195,7 @@ asyncio.run(main())
 - **Context-aware** - Automatically detects async execution
 - **Config-driven** - Behaviour controlled by `output_behaviour`
 - **Optional await** - Logs are processed either way
+- **Smart fallback** - Async mode works in sync contexts (falls back to sync processing)
 
 ## Configuration
 
@@ -572,6 +595,38 @@ logger = Nogger(colour_scheme=ColourScheme.MONOCHROME)
 ```
 
 ## API Reference
+
+### Factory Functions
+
+#### get_logger()
+
+```python
+from nogger_package import get_logger, reset_logger
+
+# Create logger on first call
+logger = get_logger(
+    "AppName",
+    colours=True,
+    output_behaviour='async_streamed',
+    gdpr={'enabled': True}
+)
+
+# Subsequent calls return same instance (singleton)
+same_logger = get_logger()
+assert logger is same_logger  # True
+
+# Reset for testing or reconfiguration
+reset_logger()
+
+# Next call creates a new logger
+new_logger = get_logger("NewApp")
+```
+
+**Benefits of get_logger():**
+- **Singleton pattern** - One logger instance across your application
+- **Simple configuration** - Configure once on first call
+- **Module context** - Pass `__name__` for module-specific logging
+- **Easy testing** - Use `reset_logger()` to reset between tests
 
 ### Core Methods
 
